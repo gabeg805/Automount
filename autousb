@@ -71,6 +71,9 @@
 ## GLOBAL VARIABLES
 ## ================
 
+## Change array delimeter
+IFS=$'\n'
+
 ## Program information
 ARGV=("$@")
 PROG_NAME=`basename $0`
@@ -80,9 +83,6 @@ PROG_PATH_LEN=${#0}
 PROG_DIR_LEN=$[ ${PROG_PATH_LEN} - ${PROG_NAME_LEN} - 1 ]
 
 PROG_DIR=${0:0:${PROG_DIR_LEN}}
-
-## Array delimeter
-IFS=$'\n'
 
 ## Directory paths
 DEV_DIR="/dev/block"
@@ -98,7 +98,7 @@ MOUNT_LOG="${PROG_DIR}/log/mount.log"
 
 ## Print program usage
 function print_usage {
-    echo "${PROG_NAME}: usb-mount [-h]"
+    echo "Usage: ${PROG_NAME} [-h]"
     exit 1
 }
 
