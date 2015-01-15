@@ -1,0 +1,282 @@
+#!/bin/bash
+## 
+## CONTRIBUTORS: 
+## 
+##     * Gabriel Gonzalez (gabeg@bu.edu) 
+## 
+## 
+## LICENSE: 
+## 
+##     The MIT License (MIT)
+## 
+## 
+## NAME:
+## 	
+##     autousb - Automatically mount a USB device.
+## 
+## 
+## SYNTAX: 
+## 	
+##     autousb [-h]
+## 
+## 
+## PURPOSE:
+## 	
+##     Mount a USB device automatically when it is plugged in.
+## 
+## 
+## OPTIONS:
+## 	
+##     -h
+##         Print program usage.
+## 
+## 
+## FUNCTIONS:
+## 
+##     print_usage      - Print program usage.
+## 
+##     is_mounted       - Check if device is mounted.
+##     is_unmounted     - Check if device was unmounted.
+## 
+##     get_device_label - Get device label name.
+##     get_device_path  - Get device path to mount.
+## 
+##     mount_device     - Mount USB device.
+##     usb_devices      - Find USB devices to mount.
+## 
+## 
+## FILE STRUCTURE:
+##     
+##     * Print Program Usage
+##     * Check Device Mount Event
+##     * Device Information 
+##     * Mount USB Device
+##     * Find USB's to Mount
+## 
+## 
+## MODIFICATION HISTORY:
+## 	
+##     gabeg Apr 10 2014 <> created
+## 
+##     gabeg May 16 2014 <> increased readability by separating script into multiple files
+## 
+##     gabeg Jun 09 2014 <> increased readability even more by separating everything into 
+##                          its own function
+##
+## ******************************************************************************************
+
+
+
+## ================
+## GLOBAL VARIABLES
+## ================
+
+## Program information
+ARGV=("$@")
+PROG_NAME=`basename $0`
+
+PROG_NAME_LEN=${#PROG_NAME}
+PROG_PATH_LEN=${#0}
+PROG_DIR_LEN=$[ ${PROG_PATH_LEN} - ${PROG_NAME_LEN} - 1 ]
+
+PROG_DIR=${0:0:${PROG_DIR_LEN}}
+
+## Array delimeter
+IFS=$'\n'
+
+## Directory paths
+DEV_DIR="/dev/block"
+
+## Log paths
+MOUNT_LOG="${PROG_DIR}/log/mount.log"
+
+
+
+## ###############################
+## ##### PRINT PROGRAM USAGE #####
+## ###############################
+
+## Print program usage
+function print_usage {
+    echo "${PROG_NAME}: usb-mount [-h]"
+    exit 1
+}
+
+
+
+## ####################################
+## ##### CHECK DEVICE MOUNT EVENT #####
+## ####################################
+
+## Check if device is mounted
+function is_mounted {
+    local num=`mount | grep -c "$1"`
+    
+    if [ $num -gt 0 ]; then
+        echo true
+    else
+        echo false
+    fi
+}
+
+
+
+## Check if there was an unmount event logged
+function is_unmounted {
+    
+    ## Second to last mount/unmount event
+    local secLastName=`tail -3 "${MOUNT_LOG}" \
+                           | head -1 \
+                           | sed 's/^.*.media\///' 
+                           | cut -f1 -d' '`
+    local secLastEvent=`tail -3 "${MOUNT_LOG}" 
+                            | head -1 
+                            | grep -i -c 'unmount'`
+    
+    ## Last mount/unmount event
+    local lastName=`tail -1 "${MOUNT_LOG}" 
+                        | sed 's/^.*.media\///' 
+                        | cut -f1 -d' '`
+    local lastEvent=`tail -1 "${MOUNT_LOG}" 
+                        | grep -i -c "unmount"`
+    
+    ## Check if already unmounted
+    case "${secLastName}" in
+        "${lastName}") 
+            ## Mount events in log file
+            if [ ${lastEvent} -eq 1 ]; then
+                echo true
+            else
+                echo false
+            fi
+            ;;
+        *)
+            ## Device names don't match up in the log            
+            echo false
+            ;;
+    esac
+}
+
+
+
+## ##############################
+## ##### DEVICE INFORMATION ##### 
+## ##############################
+
+## Get the label of a device
+function get_device_label {
+    udisks --show-info "$1" \
+        | grep -m 1 label \
+        | cut -f2 -d':' \
+        | sed 's/^[ \t]*//'
+}
+
+
+
+## Search for USB devices
+function get_device_path {
+    
+    ## Check directory contents
+    local plug=(`ls -g -v "${DEV_DIR}" \
+                     | sed '/sda/d; /sr/d; /total/d'`)
+    
+    ## Scan for USB devices
+    for i in "${plug[@]}"; do 
+        
+        ## Get mount point on hard drive (i.e. "/dev/sdb1")
+        local device=`echo "${i}" | cut -f2 -d'>' | sed 's/ \.\./\/dev/'`
+        local name=`get_device_label "${device}"`
+        
+        ## Skip for loop if device has no label/name
+        if [[ "${name}" == "" ]]; then 
+            continue
+        else             
+            echo "${device}"
+        fi
+    done
+}
+
+
+
+## ############################
+## ##### MOUNT USB DEVICE #####
+## ############################
+
+## Mount the device
+function mount_device {
+    
+    ## Append output to mount log file
+    echo >> "${MOUNT_LOG}"
+    
+    if [ $UID -eq 0 ]; then
+        su gabeg -c "udisks --mount $1" &>> "${MOUNT_LOG}"
+    else
+        udisks --mount "$1" &>> "$file"
+    fi
+}
+
+
+
+## Control the USB device
+function usb_devices {
+    
+    ## Check device directory contents
+    local plugIn=(`ls -g -v "${DEV_DIR}" | sed '/sda/d; /sr/d; /total/d'`)
+    
+    if [ ${#plugIn[@]} -ne 1 ]; then 
+        echo "${PROG_NAME}: No devices to mount."
+        exit 1
+    fi
+    
+    
+    ## Get USB devices
+    sleep 0.1
+    local allDevices=(`get_device_path`)
+    
+    ## Handle the devices
+    for device in "${allDevices[@]}"; do
+        
+        ## Mount device
+        local mountStatus=`is_mounted "$device"`
+        
+        if [[ "$mountStatus" == "false" ]]; then
+            mount_device "$device"
+        fi
+    done
+}
+
+
+
+## ###############################
+## ##### FIND USB'S TO MOUNT #####
+## ###############################
+
+## USB mount options
+function main {
+    
+    ## Display help screen
+    case "${ARGV[0]}" in
+        
+        ## Help Message
+        "-h")
+              print_usage
+              ;;
+        
+        ## Normal run
+        "")
+            usb_devices
+            ;;
+        
+        ## Print syntax error
+        *)
+            print_usage
+            ;;
+    esac
+    
+    exit 0
+}
+
+
+
+## Automatically mount USB
+main 

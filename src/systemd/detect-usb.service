@@ -1,0 +1,12 @@
+[Unit]
+Description=Run USB mounter when the '/dev/block' directory is modified
+
+[Service]
+Type=oneshot
+ExecStart=/mnt/Linux/Share/scripts/programs/automount/autousb
+Nice=19
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target
