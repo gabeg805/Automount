@@ -54,7 +54,7 @@ mounted!
 
 Lastly, update your PATH environment variable in your shell rc file with:
     
-    $ export PATH="${PATH}":"/PATH/TO/PROGRAM/autousb
+    $ export PATH="${PATH}":"/PATH/TO/PROGRAM/autousb"
 
 Now the program is ready for use!
 
