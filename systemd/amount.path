@@ -3,7 +3,7 @@ Description=Wait for directory '/dev/block' to be modified
 
 [Path]
 PathModified=/dev/block
-Unit=detect-usb.service
+Unit=amount.service
 
 [Install]
 WantedBy=multi-user.target

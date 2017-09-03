@@ -1,0 +1,339 @@
+#!/bin/bash
+# ******************************************************************************
+# 
+# Name:    amount
+# Author:  Gabriel Gonzalez
+# Email:   gabeg@bu.edu
+# License: The MIT License (MIT)
+# 
+# Syntax: amount [options] [args]
+# 
+# Description: Automatically mount a USB device when it is plugged in.
+# 
+# Notes: None.
+# 
+# ******************************************************************************
+
+# Globals
+PROG="${0##*/}"
+PROGDIR=$(dirname "$(readlink -f "${0}")")
+SYSTEMDDIR="${PROGDIR}/systemd"
+DEVBLOCKDIR="/dev/block"
+CACHEDIR="${HOME}/.cache/${PROG}"
+MOUNTFILE="${CACHEDIR}/mount.txt"
+MOUNTUSER="${USER}"
+LOG="${CACHEDIR}/${PROG}.log"
+VERBOSE=
+
+# Source utility
+. ../lib/util.sh
+
+# ******************************************************************************
+# Main
+main()
+{
+    [ $# -eq 0 ] && usage && return 0
+
+    short="hvu:r"
+    long="help,verbose,install,uninstall,user:,run"
+    args=$(getopt -o "${short}" --long "${long}" --name "${PROG}" -- "${@}")
+
+    [ $? -ne 0 ] && usage && return 1
+    eval set -- "${args}"
+
+    # Options
+    local AUTOMOUNT=
+
+    # Parse options
+    IFS=$'\n'
+    while true; do
+        case "${1}" in
+            # Usage
+            -h|--help)
+                usage
+                return 0
+                ;;
+
+            # Verbose
+            -v|--verbose)
+                VERBOSE=true
+                ;;
+
+            # Install
+            --install)
+                run_install
+                return $?
+                ;;
+
+            # Uninstall
+            --uninstall)
+                run_uninstall
+                return $?
+                ;;
+
+            # User to mount as
+            -u|--user)
+                shift
+
+                # Check username is valid
+                local user=$(getent passwd "${1}" 2> /dev/null)
+                local home=
+                if [ -z "${user}" ]; then
+                    return 1
+                fi
+                local home=$(echo "${user}" | cut -f6 -d':')
+
+                # Redefine variables
+                MOUNTUSER="${user}"
+                CACHEDIR="${home}/.cache/${PROG}"
+                MOUNTFILE="${CACHEDIR}/mount.txt"
+                LOG="${CACHEDIR}/${PROG}.log"
+                ;;
+
+            # Automount usb
+            -r|--run)
+                AUTOMOUNT=true
+                ;;
+
+            # End of options
+            --)
+                break
+                ;;
+        esac
+        shift
+    done
+
+    if [ -n "${AUTOMOUNT}" ]; then
+        run_automount
+    fi
+
+    return $?
+}
+
+# ******************************************************************************
+# Print program usage
+usage()
+{
+    echo "Usage: ${PROG} [options] [args]"
+    echo
+    echo "Options:"
+    echo "    -h, --help"
+    echo "        Print program usage."
+    echo
+    echo "    -v, --verbose"
+    echo "        Print verbosely."
+    echo
+    echo "    --install"
+    echo "        Install USB automount program."
+    echo
+    echo "    --uninstall"
+    echo "        Uninstall USB automount program."
+    echo
+    echo "    -u, --user <user>"
+    echo "        A user to run the USB automounter program as (must be root or"
+    echo "        the specified user to use this option)."
+    echo
+    echo "    -r, --run"
+    echo "        Run the USB automounter program."
+    echo
+    echo "Arguments:"
+    echo "    <user>"
+    echo "        Username of the user to run the program as."
+}
+
+# ******************************************************************************
+# Automount detected USB devices
+run_automount()
+{
+    print_info "Running automounter..."
+    local d=
+
+    for d in $(get_all_devices); do
+        # Device was plugged in
+        if ! is_mounted; then
+            mount_device "${d}"
+        fi
+
+        # Device was unplugged
+        if is_unmounted; then
+            unmount_device "${d}"
+        fi
+    done
+}
+
+# ******************************************************************************
+# Run installation
+run_install()
+{
+    print_info "Installing ${PROG}..."
+    mkdir -pv "${CACHEDIR}"
+    chown -R "${MOUNTUSER}:${MOUNTUSER}" "${CACHEDIR}"
+    create_mount_file
+    setup_systemd_files
+}
+
+# ******************************************************************************
+# Run uninstaller
+run_uninstall()
+{
+    print_info "Uninstalling ${PROG}..."
+    rm -rfv "${CACHEDIR}"
+}
+
+# ******************************************************************************
+# Setup systemd files
+setup_systemd_files()
+{
+    local servicefile="${SYSTEMDDIR}/${PROG}.service"
+    local pathfile="${SYSTEMDDIR}/${PROG}.path"
+    sed "s@ExecStart=@ExecStart=${PROGDIR}\/${PROG}@" "${servicefile}"
+    cp -v "${SYSTEMDDIR}"/* /usr/lib/systemd/system/
+    systemctl enable "${servicefile}"
+    systemctl enable "${pathfile}"
+    systemctl start "${pathfile}"
+}
+
+# ******************************************************************************
+# Create mount file
+create_mount_file()
+{
+    print_info "Creating mount file..."
+    local d=
+    local m=
+
+    echo -n > "${MOUNTFILE}"
+    for d in $(get_all_devices); do
+        m=$(get_mount_point "${dev}")
+        write_to_mount_file "${d}" "${m}"
+    done
+    chown "${MOUNTUSER}:${MOUNTUSER}" "${MOUNTFILE}"
+    chmod 644 "${MOUNTFILE}"
+}
+
+# ******************************************************************************
+# Write to mount file
+write_to_mount_file()
+{
+    local dev="${1}"
+    local mountpoint="${2}"
+    local count=$(grep -c "${dev}" "${MOUNTFILE}")
+
+    if [ ${count} -gt 0 ]; then
+        print_err "Device '${dev}' already exists in mount file."
+        return 1
+    else
+        print_info "Writing '${dev} -> ${mountpoint}' to mount file..."
+    fi
+
+    printf "%s\t%s\n" "${dev}" "${mountpoint}" >> "${MOUNTFILE}"
+}
+
+# ******************************************************************************
+# Delete from mount file
+delete_from_mount_file()
+{
+    local dev="${1}"
+    local mountpoint=$(grep "${1}" "${MOUNTFILE}" | awk '{ print $2 }')
+
+    if [ -z "${mountpoint}" ]; then
+        print_err "Device '${dev}' has no mount point."
+        return 1
+    else
+        print_info "Deleting '${dev} -> ${mountpoint}' from mount file..."
+    fi
+
+    grep -v "${dev}" "${MOUNTFILE}" > "${MOUNTFILE}.new"
+    mv "${MOUNTFILE}.new" "${MOUNTFILE}"
+}
+
+# ******************************************************************************
+# Mount device
+mount_device()
+{
+    local dev="${1}"
+    local mountpoint=
+
+    if [ $UID -eq 0 ]; then
+        su "${MOUNTUSER}" -c "udisks --mount ${dev}" &>> "${LOG}"
+    else
+        udisks --mount "${dev}" &>> "${LOG}"
+    fi
+    sleep 0.5
+
+    mountpoint=$(get_mount_point "${dev}")
+    write_to_mount_file "${dev}" "${mountpoint}"
+}
+
+# ******************************************************************************
+# Unmount device
+unmount_device()
+{
+    local dev="${1}"
+    delete_from_mount_file "${dev}"
+}
+
+# ******************************************************************************
+# Return all mountable  devices
+get_all_devices()
+{
+    local dev=($(ls -g -v "${DEVBLOCKDIR}" \
+        | sed '/ram/d; /loop/d; /sr/d; /total/d'))
+
+    # Print devices (e.g. "/dev/sdb1")
+    for i in "${dev[@]}"; do 
+        echo "${i}" \
+            | cut -f2 -d'>' \
+            | sed 's/ \.\./\/dev/'
+    done
+}
+
+# ******************************************************************************
+# Return label of a device
+get_device_label()
+{
+    udisks --show-info "${1}" \
+        | grep -m 1 label \
+        | cut -f2 -d':' \
+        | sed 's/^[ \t]*//'
+}
+
+# ******************************************************************************
+# Return mount point
+get_mount_point()
+{
+    df --output=target "${1}" 2> /dev/null | tail -1
+}
+
+# ******************************************************************************
+# Check if device is mounted
+is_mounted()
+{
+    local count=$(grep -c "${1}" "${MOUNTFILE}")
+    if [ ${count} -gt 0 ]; then
+        return 0
+    fi
+    return 1
+}
+
+# ******************************************************************************
+# Check if there was an unmount event logged
+is_unmounted()
+{
+    local line=$(grep "${1}" "${MOUNTFILE}")
+    local mountexists=$(echo "${line}" | grep -c "${1}")
+    local mountpoint=$(echo "${line}" | awk '{ print $2 }')
+    local mountsyscount=$(mount | grep -c "${1}")
+
+    if [   -n "${mountexists}" \
+        -a -n "${mountpoint}" \
+        -a ${mountsyscount} -eq 0 ]
+    then
+        return 0
+    fi
+
+    return 1
+}
+
+# ******************************************************************************
+# Run script
+main "${@}"
