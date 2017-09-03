@@ -178,6 +178,7 @@ run_uninstall()
 {
     print_info "Uninstalling ${PROG}..."
     rm -rfv "${CACHEDIR}"
+    cleanup_systemd_files
 }
 
 # ******************************************************************************
@@ -191,6 +192,15 @@ setup_systemd_files()
     systemctl enable "${servicefile}"
     systemctl enable "${pathfile}"
     systemctl start "${pathfile}"
+}
+
+# ******************************************************************************
+# Cleanup systemd files
+cleanup_systemd_files()
+{
+    systemctl disable "${servicefile}"
+    systemctl disable "${pathfile}"
+    systemctl stop "${pathfile}"
 }
 
 # ******************************************************************************

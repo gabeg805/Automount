@@ -10,12 +10,11 @@ for a change. When the directory is modified (e.g. when something is
 added/removed or a file changes), this program automatically mounts the USB
 device that is plugged in.
 
-
 ## Requirements
 
 ```    
-- *systemd*: Detect devices plugged into/out-of the computer.
-- *udisks*: Mount detected devices. 
+- systemd: Detect devices plugged into/out-of the computer.
+- udisks: Mount detected devices. 
 ```
 
 ## Installation
@@ -32,4 +31,10 @@ The program should be up and running, waiting for a USB to be plugged in.
 You can check this by running:
 ```
 $ systemctl status amount.path
+```
+
+## Uninstall
+
+```
+$ sudo ./amount --uninstall --user=<user>
 ```
