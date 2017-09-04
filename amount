@@ -22,6 +22,8 @@ DEVBLOCKDIR="/dev/block"
 CACHEDIR="${HOME}/.cache/${PROG}"
 MOUNTFILE="${CACHEDIR}/mount.txt"
 MOUNTUSER="${USER}"
+
+# Options
 LOG="${CACHEDIR}/${PROG}.log"
 VERBOSE=
 
