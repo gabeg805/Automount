@@ -28,7 +28,7 @@ LOG="${CACHEDIR}/${PROG}.log"
 VERBOSE=
 
 # Source utility
-. "${PROGDIR}/../lib/util.sh"
+. "${PROGDIR}/../lib/bash/util.sh"
 
 # ******************************************************************************
 # Main
