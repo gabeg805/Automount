@@ -1,0 +1,9 @@
+[Unit]
+Description=Automatically mount inserted devices by waiting for new inputs under /dev/block.
+
+[Path]
+PathModified=/dev/block
+Unit=automnt.service
+
+[Install]
+WantedBy=multi-user.target

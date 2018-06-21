@@ -1,0 +1,267 @@
+#!/bin/bash
+# ------------------------------------------------------------------------------
+# 
+# Name: automnt
+# Author: Gabe Gonzalez
+# 
+# Brief: Automatically mount a USB device when it is plugged in.
+# 
+# ------------------------------------------------------------------------------
+
+##
+# Project name.
+##
+PROJECT="${0##*/}"
+
+##
+# Files/directories.
+##
+MOUNT_FILE="/proc/mounts"
+MOUNT_HISTORY="/tmp/${PROJECT}/${USER}_history.txt"
+DEV_BLOCK_DIR="/dev/block"
+SYSTEMD_DIR="${HOME}/.config/systemd/user"
+
+##
+# Options.
+##
+INSTALL=
+UNINSTALL=
+RUN=
+
+##
+# Exit statuses.
+##
+EXIT_NO_OPT_ENTERED=10
+EXIT_AUTOMNT_DEVICE_ALREADY_MOUNTED=11
+
+##
+# Main.
+##
+main()
+{
+    if [ $# -eq 0 ]
+    then
+        usage
+        exit 0
+    fi
+
+    # Parse options
+    local short="hr"
+    local long="help,install,uninstall,run"
+    local args=$(getopt -o "${short}" --long "${long}" --name "${PROJECT}" \
+                        -- "${@}")
+    if [ $? -ne 0 ]
+    then
+        usage
+        exit 1
+    fi
+    eval set -- "${args}"
+
+    while true
+    do
+        case "${1}" in
+            -h|--help)
+                usage
+                exit 0
+                ;;
+
+            --install)
+                INSTALL=true
+                ;;
+
+            --uninstall)
+                UNINSTALL=true
+                ;;
+
+            -r|--run)
+                RUN=true
+                ;;
+
+            --)
+                break
+                ;;
+
+            *)
+                break
+                ;;
+        esac
+        shift
+    done
+
+    if [ -n "${INSTALL}" ]
+    then
+        automnt_install
+    elif [ -n "${UNINSTALL}" ]
+    then
+        automnt_uninstall
+    elif [ -n "${RUN}" ]
+    then
+        automnt_run
+    else
+        usage
+        exit ${EXIT_NO_OPT_ENTERED}
+    fi
+
+    return $?
+}
+
+##
+# Print program usage.
+##
+usage()
+{
+    echo "Usage: ${PROJECT} [options]"
+    echo 
+    echo "Options:"
+    echo "    -h, --help"
+    echo "        Print program usage."
+    echo
+    echo "    --install"
+    echo "        Install USB automount program."
+    echo 
+    echo "    --uninstall"
+    echo "        Uninstall USB automount program."
+    echo 
+    echo "    -r, --run"
+    echo "        Search for new USB devices and mount them."
+}
+
+##
+# Automatically mount detected USB devices.
+##
+automnt_run()
+{
+    if [ ! -f "${MOUNT_HISTORY}" ]
+    then
+        automnt_history_update
+        return $?
+    fi
+    sleep 1
+    local dev=
+    for dev in $(automnt_history_get_diff)
+    do
+        automnt_device_mount "${dev}"
+    done
+    automnt_history_update
+}
+
+##
+# Install the systemd config files and enable the service.
+##
+automnt_install()
+{
+    local dir=$(dirname "$(readlink -e "${0}")")
+    echo ":: Installing '${PROJECT}'."
+    mkdir -pv "${SYSTEMD_DIR}"
+    cp -av "${dir}/systemd/"* "${SYSTEMD_DIR}"
+    sed -i "s@ExecStart=@ExecStart=${dir}\/${PROJECT} --run@" \
+        "${SYSTEMD_DIR}/${PROJECT}.service"
+    systemctl --user enable "${PROJECT}.path"
+    systemctl --user start "${PROJECT}.path"
+    automnt_history_update
+}
+
+##
+# Uninstall the auto mounter systemd files.
+##
+automnt_uninstall()
+{
+    echo ":: Uninstalling '${PROJECT}'."
+    systemctl --user disable "${PROJECT}.path"
+    systemctl --user stop "${PROJECT}.path"
+    systemctl --user stop "${PROJECT}.service"
+    rm -fv "${SYSTEMD_DIR}/${PROJECT}."{path,service}
+}
+
+##
+# Mount the device.
+##
+automnt_device_mount()
+{
+    local dev="${1}"
+    if automnt_is_mounted "${dev}"
+    then
+        echo "${PROJECT}: Device '${dev}' already mounted." 1>&2
+        return ${EXIT_AUTOMNT_DEVICE_ALREADY_MOUNTED}
+    fi
+    udisks --mount "${dev}"
+}
+
+##
+# Return a list of all block devices.
+##
+automnt_device_get_list()
+{
+    local dev=
+    local name=
+    local len=
+    for dev in $(ls -v "${DEV_BLOCK_DIR}"/*)
+    do
+        name=$(readlink -e "${dev}")
+        len=${#name}
+        if [ ${len} -eq 9 -o ${len} -eq 10 ]
+        then
+            echo "${name}"
+        fi
+    done
+}
+
+##
+# Update the mount history.
+##
+automnt_history_update()
+{
+    mkdir -pv "$(dirname "${MOUNT_HISTORY}")"
+    automnt_device_get_list > "${MOUNT_HISTORY}"
+    if [ $(stat -c %a "${MOUNT_HISTORY}") != 666 ]
+    then
+        chmod -v 666 "${MOUNT_HISTORY}"
+    fi
+}
+
+##
+# Return a difference of what devices were previously on the system vs what is
+# currently on the system.
+##
+automnt_history_get_diff()
+{
+    local line=
+    local dev=
+    for dev in $(automnt_device_get_list)
+    do
+        local found=false
+        while IFS= read -r line
+        do
+            if [ "${line}" == "${dev}" ]
+            then
+                found=true
+                break
+            fi
+        done < "${MOUNT_HISTORY}"
+
+        if ! ${found}
+        then
+            echo "${dev}"
+        fi
+    done
+}
+
+##
+# Check if the device is mounted.
+##
+automnt_is_mounted()
+{
+    local dev="${1}"
+    local count=$(grep -c "${1}" "${MOUNT_FILE}")
+    if [ ${count} -gt 0 ]
+    then
+        return 0
+    else
+        return 1
+    fi
+}
+
+##
+# Run script.
+##
+main "${@}"

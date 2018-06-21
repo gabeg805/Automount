@@ -1,4 +1,4 @@
-# AMOUNT
+# AUTOMNT
 
 ## What is it?
 
@@ -20,21 +20,18 @@ device that is plugged in.
 ## Installation
 
 ```
-$ sudo ./amount --install --user=<user>
+$ sudo ./automnt --install
 ```
-
-Where *user* is the user you want to mount the devices as. If omitted, devices
-will be mounted as root, and may not be modifiable by a regular user.
 
 The program should be up and running, waiting for a USB to be plugged in.
 
 You can check this by running:
 ```
-$ systemctl status amount.path
+$ systemctl --user status automnt.path
 ```
 
 ## Uninstall
 
 ```
-$ sudo ./amount --uninstall --user=<user>
+$ sudo ./automnt --uninstall
 ```

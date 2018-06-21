@@ -1,5 +1,5 @@
 [Unit]
-Description=Run USB mounter when the '/dev/block' directory is modified
+Description=Automatically mount inserted devices.
 
 [Service]
 Type=oneshot
