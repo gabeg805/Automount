@@ -26,13 +26,15 @@ SYSTEMD_DIR="${HOME}/.config/systemd/user"
 ##
 INSTALL=
 UNINSTALL=
+INIT=
 RUN=
 
 ##
 # Exit statuses.
 ##
 EXIT_NO_OPT_ENTERED=10
-EXIT_AUTOMNT_DEVICE_ALREADY_MOUNTED=11
+EXIT_AUTOMNT_HISTORY_DOES_NOT_EXIST=11
+EXIT_AUTOMNT_DEVICE_ALREADY_MOUNTED=12
 
 ##
 # Main.
@@ -46,8 +48,8 @@ main()
     fi
 
     # Parse options
-    local short="hr"
-    local long="help,install,uninstall,run"
+    local short="hir"
+    local long="help,install,uninstall,init,run"
     local args=$(getopt -o "${short}" --long "${long}" --name "${PROJECT}" \
                         -- "${@}")
     if [ $? -ne 0 ]
@@ -64,23 +66,18 @@ main()
                 usage
                 exit 0
                 ;;
-
             --install)
                 INSTALL=true
                 ;;
-
             --uninstall)
                 UNINSTALL=true
                 ;;
-
+            -i|--init)
+                INIT=true
+                ;;
             -r|--run)
                 RUN=true
                 ;;
-
-            --)
-                break
-                ;;
-
             *)
                 break
                 ;;
@@ -94,6 +91,9 @@ main()
     elif [ -n "${UNINSTALL}" ]
     then
         automnt_uninstall
+    elif [ -n "${INIT}" ]
+    then
+        automnt_init
     elif [ -n "${RUN}" ]
     then
         automnt_run
@@ -122,8 +122,24 @@ usage()
     echo "    --uninstall"
     echo "        Uninstall USB automount program."
     echo 
+    echo "    -i, --init"
+    echo "        Initialize the mount history before any devices are plugged"
+    echo "        in."
+    echo 
     echo "    -r, --run"
     echo "        Search for new USB devices and mount them."
+}
+
+##
+# Initialize the mount history.
+##
+automnt_init()
+{
+    if [ ! -f "${MOUNT_HISTORY}" ]
+    then
+        automnt_history_create
+        automnt_history_update
+    fi
 }
 
 ##
@@ -133,11 +149,22 @@ automnt_run()
 {
     if [ ! -f "${MOUNT_HISTORY}" ]
     then
-        automnt_history_update
-        return $?
+        return ${EXIT_AUTOMNT_HISTORY_DOES_NOT_EXIST}
     fi
-    sleep 1
+
+    local timeout=10
     local dev=
+    while [ ${timeout} -gt 0 ]
+    do
+        automnt_history_get_diff &> /dev/null
+        if [ $? -eq 0 ]
+        then
+            break
+        fi
+        timeout=$[ ${timeout} - 1 ]
+        sleep 1
+    done
+
     for dev in $(automnt_history_get_diff)
     do
         automnt_device_mount "${dev}"
@@ -207,16 +234,24 @@ automnt_device_get_list()
 }
 
 ##
-# Update the mount history.
+# Create the mount history.
 ##
-automnt_history_update()
+automnt_history_create()
 {
     mkdir -pv "$(dirname "${MOUNT_HISTORY}")"
-    automnt_device_get_list > "${MOUNT_HISTORY}"
+    touch "${MOUNT_HISTORY}"
     if [ $(stat -c %a "${MOUNT_HISTORY}") != 666 ]
     then
         chmod -v 666 "${MOUNT_HISTORY}"
     fi
+}
+
+##
+# Update the mount history.
+##
+automnt_history_update()
+{
+    automnt_device_get_list > "${MOUNT_HISTORY}"
 }
 
 ##
@@ -227,6 +262,7 @@ automnt_history_get_diff()
 {
     local line=
     local dev=
+    local none=true
     for dev in $(automnt_device_get_list)
     do
         local found=false
@@ -242,8 +278,16 @@ automnt_history_get_diff()
         if ! ${found}
         then
             echo "${dev}"
+            none=false
         fi
     done
+
+    if ${none}
+    then
+        return 1
+    else
+        return 0
+    fi
 }
 
 ##
