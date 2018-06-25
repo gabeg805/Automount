@@ -1,12 +1,9 @@
 [Unit]
-Description=Automatically mount inserted devices.
+Description=Automatically mount removable devices.
 
 [Service]
 Type=oneshot
 ExecStart=
-Nice=19
-IOSchedulingClass=best-effort
-IOSchedulingPriority=7
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=basic.target
