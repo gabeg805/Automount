@@ -125,6 +125,7 @@ automnt_run()
 {
     local timeout=10
     local b=
+    sleep ${timeout}
     while [ ${timeout} -gt 0 ]
     do
         for b in "${DEV_BLOCK_DIR}"/*
