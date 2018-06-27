@@ -24,7 +24,7 @@ file must:
 - Not have a name beginning with *sda#*
 - Not point to a device that is already mounted.
 
-## Requirements
+## Dependencies
 
 - systemctl
 - udisks
