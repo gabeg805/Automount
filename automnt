@@ -31,8 +31,7 @@ RUN=
 ##
 # Exit statuses.
 ##
-EXIT_NO_OPT_ENTERED=10
-EXIT_AUTOMNT_DEVICE_ALREADY_MOUNTED=11
+EXIT_AUTOMNT_DEVICE_ALREADY_MOUNTED=10
 
 ##
 # Main.
@@ -45,11 +44,14 @@ main()
         exit 0
     fi
 
-    # Parse options
+	# Options
     local short="hr"
     local long="help,install,uninstall,run"
-    local args=$(getopt -o "${short}" --long "${long}" --name "${PROJECT}" \
-                        -- "${@}")
+	local args=
+
+    # Parse options
+    args=$(getopt -o "${short}" --long "${long}" --name "${PROJECT}" \
+				-- "${@}")
     if [ $? -ne 0 ]
     then
         usage
@@ -90,9 +92,8 @@ main()
     then
         automnt_run
     else
-        usage
-        exit ${EXIT_NO_OPT_ENTERED}
-    fi
+		:
+	fi
 
     return $?
 }
